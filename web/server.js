@@ -20,10 +20,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 app.use(express.json());
 
-// 静态文件服务 - 指向构建后的 dist 目录
-app.use(express.static(path.join(__dirname, 'dist')));
-
-// Webhook 接口
+// 优先处理 API 路由，避免被静态文件路由拦截
 app.post('/api/webhook', async (req, res) => {
   try {
     const payload = req.body;
@@ -89,6 +86,9 @@ app.post('/api/webhook', async (req, res) => {
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });
+
+// 静态文件服务 - 指向构建后的 dist 目录
+app.use(express.static(path.join(__dirname, 'dist')));
 
 // 处理所有其他请求，返回单页应用的 index.html
 app.get('*', (req, res) => {

@@ -119,10 +119,10 @@ export function AIInsights() {
       }
 
       const response = await openai.chat.completions.create({
-        model: AI_MODEL,
+        model: AI_MODEL || 'gpt-3.5-turbo',
         messages: [
           { role: 'system', content: '你是Synaptix的金融AI助手，专业、冷静、客观。你的回答需要基于数据和逻辑，并明确指出可能的风险。如果被问及投资建议，请务必说明这仅供参考，不构成投资建议。' },
-          ...messages.map(m => ({ role: m.role, content: m.content })),
+          ...messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
           { role: 'user', content: userMessage }
         ],
       });

@@ -80,21 +80,42 @@ export function Quotes() {
     }
 
     try {
-      // Get user's default watchlist
+      // Add item directly to v_watchlist_items (Supabase handles mapping)
+      // Note: Usually we insert into a base table, but if the view is updatable or mapped,
+      // here we should insert into the actual junction table. 
+      // Based on error log, public.watchlist_assets was not found, but v_watchlist_items was suggested.
+      // If v_watchlist_items is a view, we should use the underlying table.
+      // Let's assume the underlying table for adding is 'user_watchlist_items' 
+      // but we need to check if the user has a watchlist first.
+      
       const { data: watchlists, error: watchlistError } = await supabase
         .from('user_watchlists')
         .select('id')
         .eq('user_id', user.id)
         .eq('is_default', true)
-        .single();
+        .maybeSingle();
 
       if (watchlistError) throw watchlistError;
+
+      let watchlistId;
+      if (!watchlists) {
+        // Create a default watchlist if none exists
+        const { data: newWatchlist, error: createError } = await supabase
+          .from('user_watchlists')
+          .insert({ user_id: user.id, name: '我的自选', is_default: true })
+          .select('id')
+          .single();
+        if (createError) throw createError;
+        watchlistId = newWatchlist.id;
+      } else {
+        watchlistId = watchlists.id;
+      }
 
       // Add item to watchlist
       const { error: insertError } = await supabase
         .from('user_watchlist_items')
         .insert({
-          watchlist_id: watchlists.id,
+          watchlist_id: watchlistId,
           asset_id: assetId
         });
 

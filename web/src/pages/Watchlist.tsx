@@ -34,43 +34,15 @@ export function Watchlist() {
       
       setLoading(true);
       try {
-        const { data: userList, error: listError } = await supabase
-          .from('user_watchlists')
-          .select('id')
-          .eq('user_id', user.id)
-          .single();
+        const { data: prices, error: pricesError } = await supabase
+          .from('v_watchlist_items')
+          .select('*')
+          .eq('user_id', user.id);
 
-        if (listError && listError.code !== 'PGRST116') {
-          throw listError;
-        }
+        if (pricesError) throw pricesError;
 
-        if (userList) {
-          const { data: assets, error: assetsError } = await supabase
-            .from('watchlist_assets')
-            .select(`
-              asset_id,
-              assets (
-                id, asset_code, asset_name, market_code
-              )
-            `)
-            .eq('watchlist_id', userList.id);
-
-          if (assetsError) throw assetsError;
-
-          if (assets && assets.length > 0) {
-            // Fetch current prices from view
-            const assetIds = assets.map(a => a.asset_id);
-            const { data: prices } = await supabase
-              .from('v_asset_overview')
-              .select('*')
-              .in('id', assetIds);
-
-            if (prices) {
-              setItems(prices as unknown as WatchlistItem[]);
-            }
-          } else {
-            setItems([]);
-          }
+        if (prices) {
+          setItems(prices as unknown as WatchlistItem[]);
         } else {
           setItems([]);
         }
@@ -88,9 +60,9 @@ export function Watchlist() {
   const removeFromWatchlist = async (itemId: number) => {
     try {
       const { error } = await supabase
-        .from('user_watchlist_items')
+        .from('v_watchlist_items')
         .delete()
-        .eq('id', itemId);
+        .eq('watchlist_item_id', itemId);
 
       if (error) throw error;
       

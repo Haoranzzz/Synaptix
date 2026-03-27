@@ -145,7 +145,7 @@ export function Sidebar() {
             <button 
               onClick={() => {
                 setIsAuthModalOpen(true);
-                setMobileMenuOpen(false);
+                // setMobileMenuOpen(false); // Keep sidebar open on mobile so it doesn't look like it's hidden behind
               }}
               className={cn(
                 "w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary text-white hover:bg-primary-hover transition-all font-bold shadow-lg shadow-primary/20 active:scale-95",

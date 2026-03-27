@@ -50,7 +50,7 @@ export function Home() {
       const { data: markets } = await supabase
         .from('v_asset_overview')
         .select('asset_code, asset_name, last_price, price_change_pct')
-        .in('asset_code', ['000001.SH', 'SPX', 'BTCUSDT', 'XAUUSD']) // Adjust codes based on your seed data
+        .in('asset_code', ['000001.SH', 'SPX', 'BTCUSDT', 'XAUUSD'])
         .limit(4);
       
       if (markets && markets.length > 0) {
@@ -88,7 +88,7 @@ export function Home() {
         setAiInsight(mockAiInsight);
       }
 
-      // 3. Fetch Hot Topics (Using news with highest heat)
+      // 3. Fetch Hot Topics
       const { data: topics } = await supabase
         .from('news_articles')
         .select('title, summary, heat_score')

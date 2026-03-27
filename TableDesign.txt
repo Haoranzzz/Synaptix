@@ -1,0 +1,820 @@
+create extension if not exists pgcrypto;
+
+-- =====================================================
+-- 1. 通用函数
+-- =====================================================
+
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.user_profiles (
+    id,
+    email,
+    display_name,
+    avatar_url,
+    locale,
+    timezone,
+    theme,
+    status
+  )
+  values (
+    new.id,
+    new.email,
+    coalesce(new.raw_user_meta_data ->> 'display_name', split_part(coalesce(new.email, ''), '@', 1)),
+    new.raw_user_meta_data ->> 'avatar_url',
+    'zh-CN',
+    'Asia/Shanghai',
+    'dark',
+    'active'
+  )
+  on conflict (id) do nothing;
+
+  insert into public.user_watchlists (
+    user_id,
+    watchlist_name,
+    is_default
+  )
+  values (
+    new.id,
+    '默认自选',
+    true
+  )
+  on conflict (user_id, watchlist_name) do nothing;
+
+  return new;
+end;
+$$;
+
+-- =====================================================
+-- 2. 用户表
+-- =====================================================
+
+create table if not exists public.user_profiles (
+  id                uuid primary key references auth.users(id) on delete cascade,
+  email             text,
+  display_name      text,
+  avatar_url        text,
+  locale            text not null default 'zh-CN',
+  timezone          text not null default 'Asia/Shanghai',
+  theme             text not null default 'dark',
+  status            text not null default 'active',
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now()
+);
+
+create unique index if not exists idx_user_profiles_email_unique
+  on public.user_profiles(email)
+  where email is not null;
+
+drop trigger if exists trg_user_profiles_updated_at on public.user_profiles;
+create trigger trg_user_profiles_updated_at
+before update on public.user_profiles
+for each row
+execute function public.set_updated_at();
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+after insert on auth.users
+for each row
+execute function public.handle_new_user();
+
+-- =====================================================
+-- 3. 市场与资产主数据
+-- =====================================================
+
+create table if not exists public.markets (
+  id                bigserial primary key,
+  market_code       text not null unique,   -- stock / crypto / forex / index / commodity
+  market_name       text not null,
+  sort_order        integer not null default 0,
+  is_active         boolean not null default true,
+  created_at        timestamptz not null default now()
+);
+
+create table if not exists public.assets (
+  id                bigserial primary key,
+  market_id         bigint not null references public.markets(id) on delete restrict,
+  asset_code        text not null,          -- AAPL / BTCUSDT / SPX
+  asset_symbol      text not null,
+  asset_name        text not null,
+  asset_type        text not null,          -- stock / coin / forex / index / etf / commodity
+  exchange_name     text,
+  base_currency     text,
+  quote_currency    text,
+  sector_name       text,
+  industry_name     text,
+  logo_url          text,
+  description       text,
+  status            text not null default 'active',
+  metadata          jsonb not null default '{}'::jsonb,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now(),
+  unique (market_id, asset_code)
+);
+
+create index if not exists idx_assets_market_id on public.assets(market_id);
+create index if not exists idx_assets_symbol on public.assets(asset_symbol);
+create index if not exists idx_assets_type on public.assets(asset_type);
+create index if not exists idx_assets_sector on public.assets(sector_name);
+create index if not exists idx_assets_status on public.assets(status);
+
+drop trigger if exists trg_assets_updated_at on public.assets;
+create trigger trg_assets_updated_at
+before update on public.assets
+for each row
+execute function public.set_updated_at();
+
+-- =====================================================
+-- 4. 行情数据
+-- =====================================================
+
+create table if not exists public.asset_quote_latest (
+  asset_id             bigint primary key references public.assets(id) on delete cascade,
+  last_price           numeric(20,8),
+  prev_close_price     numeric(20,8),
+  open_price           numeric(20,8),
+  high_price           numeric(20,8),
+  low_price            numeric(20,8),
+  price_change         numeric(20,8),
+  price_change_pct     numeric(10,4),
+  volume               numeric(28,8),
+  turnover             numeric(28,8),
+  market_cap           numeric(28,2),
+  amplitude_pct        numeric(10,4),
+  heat_score           numeric(10,4),
+  sentiment_score      numeric(10,4),
+  ai_signal_label      text,                -- bullish / bearish / neutral / risk
+  updated_at           timestamptz not null default now()
+);
+
+create index if not exists idx_asset_quote_latest_change_pct
+  on public.asset_quote_latest(price_change_pct desc);
+
+create index if not exists idx_asset_quote_latest_heat_score
+  on public.asset_quote_latest(heat_score desc);
+
+drop trigger if exists trg_asset_quote_latest_updated_at on public.asset_quote_latest;
+create trigger trg_asset_quote_latest_updated_at
+before update on public.asset_quote_latest
+for each row
+execute function public.set_updated_at();
+
+create table if not exists public.asset_klines (
+  id                   bigserial primary key,
+  asset_id             bigint not null references public.assets(id) on delete cascade,
+  timeframe            text not null,       -- 1m / 5m / 15m / 1h / 4h / 1d / 1w
+  candle_time          timestamptz not null,
+  open_price           numeric(20,8) not null,
+  high_price           numeric(20,8) not null,
+  low_price            numeric(20,8) not null,
+  close_price          numeric(20,8) not null,
+  volume               numeric(28,8),
+  turnover             numeric(28,8),
+  created_at           timestamptz not null default now(),
+  unique (asset_id, timeframe, candle_time)
+);
+
+create index if not exists idx_asset_klines_asset_tf_time
+  on public.asset_klines(asset_id, timeframe, candle_time desc);
+
+-- =====================================================
+-- 5. 资讯数据
+-- =====================================================
+
+create table if not exists public.news_sources (
+  id                   bigserial primary key,
+  source_name          text not null unique,
+  source_type          text not null,       -- media / official / exchange / social
+  base_url             text,
+  credibility_score    numeric(10,4) not null default 0,
+  is_active            boolean not null default true,
+  created_at           timestamptz not null default now()
+);
+
+create table if not exists public.news_articles (
+  id                   bigserial primary key,
+  source_id            bigint references public.news_sources(id) on delete set null,
+  title                text not null,
+  summary              text,
+  content              text,
+  article_url          text,
+  external_id          text,
+  origin_hash          text,                -- 用于去重，建议抓取端生成 md5
+  author_name          text,
+  published_at         timestamptz,
+  crawled_at           timestamptz,
+  language_code        text not null default 'zh-CN',
+  sentiment_label      text,                -- positive / negative / neutral
+  sentiment_score      numeric(10,4),
+  heat_score           numeric(10,4),
+  importance_score     numeric(10,4),
+  ai_summary           text,
+  ai_tags              jsonb not null default '[]'::jsonb,
+  status               text not null default 'published',
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now()
+);
+
+create unique index if not exists idx_news_articles_origin_hash_unique
+  on public.news_articles(origin_hash)
+  where origin_hash is not null;
+
+create index if not exists idx_news_articles_published_at
+  on public.news_articles(published_at desc);
+
+create index if not exists idx_news_articles_heat_score
+  on public.news_articles(heat_score desc);
+
+create index if not exists idx_news_articles_importance_score
+  on public.news_articles(importance_score desc);
+
+create index if not exists idx_news_articles_ai_tags
+  on public.news_articles using gin (ai_tags);
+
+drop trigger if exists trg_news_articles_updated_at on public.news_articles;
+create trigger trg_news_articles_updated_at
+before update on public.news_articles
+for each row
+execute function public.set_updated_at();
+
+create table if not exists public.news_article_assets (
+  id                   bigserial primary key,
+  article_id           bigint not null references public.news_articles(id) on delete cascade,
+  asset_id             bigint not null references public.assets(id) on delete cascade,
+  relevance_score      numeric(10,4) not null default 0,
+  relation_type        text,                -- direct / sector / macro
+  created_at           timestamptz not null default now(),
+  unique (article_id, asset_id)
+);
+
+create index if not exists idx_news_article_assets_asset_id
+  on public.news_article_assets(asset_id);
+
+create index if not exists idx_news_article_assets_article_id
+  on public.news_article_assets(article_id);
+
+-- =====================================================
+-- 6. AI 洞察
+-- =====================================================
+
+create table if not exists public.ai_insights (
+  id                   bigserial primary key,
+  insight_type         text not null,       -- market_summary / asset_analysis / risk_alert / signal_explain
+  asset_id             bigint references public.assets(id) on delete set null,
+  title                text not null,
+  summary              text not null,
+  detail_content       text,
+  evidence_items       jsonb not null default '[]'::jsonb,
+  risk_items           jsonb not null default '[]'::jsonb,
+  confidence_score     numeric(10,4),
+  valid_from           timestamptz,
+  valid_to             timestamptz,
+  generated_by         text,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now()
+);
+
+create index if not exists idx_ai_insights_type_created_at
+  on public.ai_insights(insight_type, created_at desc);
+
+create index if not exists idx_ai_insights_asset_id
+  on public.ai_insights(asset_id);
+
+drop trigger if exists trg_ai_insights_updated_at on public.ai_insights;
+create trigger trg_ai_insights_updated_at
+before update on public.ai_insights
+for each row
+execute function public.set_updated_at();
+
+create table if not exists public.ai_conversations (
+  id                   uuid primary key default gen_random_uuid(),
+  user_id              uuid not null references auth.users(id) on delete cascade,
+  asset_id             bigint references public.assets(id) on delete set null,
+  title                text,
+  context_type         text,                -- global / asset / watchlist / news
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now()
+);
+
+create index if not exists idx_ai_conversations_user_id
+  on public.ai_conversations(user_id);
+
+drop trigger if exists trg_ai_conversations_updated_at on public.ai_conversations;
+create trigger trg_ai_conversations_updated_at
+before update on public.ai_conversations
+for each row
+execute function public.set_updated_at();
+
+create table if not exists public.ai_messages (
+  id                   bigserial primary key,
+  conversation_id      uuid not null references public.ai_conversations(id) on delete cascade,
+  role_type            text not null,       -- user / assistant / system
+  message_content      text not null,
+  cited_sources        jsonb not null default '[]'::jsonb,
+  cited_assets         jsonb not null default '[]'::jsonb,
+  created_at           timestamptz not null default now()
+);
+
+create index if not exists idx_ai_messages_conversation_id_created_at
+  on public.ai_messages(conversation_id, created_at asc);
+
+-- =====================================================
+-- 7. 自选与提醒
+-- =====================================================
+
+create table if not exists public.user_watchlists (
+  id                   bigserial primary key,
+  user_id              uuid not null references auth.users(id) on delete cascade,
+  watchlist_name       text not null default '默认自选',
+  is_default           boolean not null default false,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now(),
+  unique (user_id, watchlist_name)
+);
+
+create unique index if not exists idx_user_watchlists_default_unique
+  on public.user_watchlists(user_id)
+  where is_default = true;
+
+create index if not exists idx_user_watchlists_user_id
+  on public.user_watchlists(user_id);
+
+drop trigger if exists trg_user_watchlists_updated_at on public.user_watchlists;
+create trigger trg_user_watchlists_updated_at
+before update on public.user_watchlists
+for each row
+execute function public.set_updated_at();
+
+create table if not exists public.user_watchlist_items (
+  id                   bigserial primary key,
+  watchlist_id         bigint not null references public.user_watchlists(id) on delete cascade,
+  asset_id             bigint not null references public.assets(id) on delete cascade,
+  sort_order           integer not null default 0,
+  created_at           timestamptz not null default now(),
+  unique (watchlist_id, asset_id)
+);
+
+create index if not exists idx_user_watchlist_items_watchlist_id
+  on public.user_watchlist_items(watchlist_id);
+
+create table if not exists public.user_alerts (
+  id                   bigserial primary key,
+  user_id              uuid not null references auth.users(id) on delete cascade,
+  asset_id             bigint not null references public.assets(id) on delete cascade,
+  alert_type           text not null,       -- price / percent / news / signal
+  alert_name           text,
+  condition_json       jsonb not null,      -- {"op":">=","value":100}
+  notify_channels      jsonb not null default '["site"]'::jsonb,
+  is_enabled           boolean not null default true,
+  last_triggered_at    timestamptz,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now()
+);
+
+create index if not exists idx_user_alerts_user_id
+  on public.user_alerts(user_id);
+
+create index if not exists idx_user_alerts_asset_id
+  on public.user_alerts(asset_id);
+
+drop trigger if exists trg_user_alerts_updated_at on public.user_alerts;
+create trigger trg_user_alerts_updated_at
+before update on public.user_alerts
+for each row
+execute function public.set_updated_at();
+
+-- =====================================================
+-- 8. 信号中心
+-- =====================================================
+
+create table if not exists public.signal_events (
+  id                   bigserial primary key,
+  asset_id             bigint not null references public.assets(id) on delete cascade,
+  signal_type          text not null,       -- spike_up / spike_down / breakout / sentiment_shift
+  signal_title         text not null,
+  signal_description   text,
+  direction_label      text,                -- bullish / bearish / neutral
+  heat_score           numeric(10,4),
+  confidence_score     numeric(10,4),
+  evidence_items       jsonb not null default '[]'::jsonb,
+  signal_time          timestamptz not null,
+  created_at           timestamptz not null default now()
+);
+
+create index if not exists idx_signal_events_asset_id_time
+  on public.signal_events(asset_id, signal_time desc);
+
+create index if not exists idx_signal_events_signal_time
+  on public.signal_events(signal_time desc);
+
+-- =====================================================
+-- 9. 配置表
+-- =====================================================
+
+create table if not exists public.system_configs (
+  id                   bigserial primary key,
+  config_key           text not null unique,
+  config_value         jsonb not null,
+  description          text,
+  updated_at           timestamptz not null default now()
+);
+
+drop trigger if exists trg_system_configs_updated_at on public.system_configs;
+create trigger trg_system_configs_updated_at
+before update on public.system_configs
+for each row
+execute function public.set_updated_at();
+
+-- =====================================================
+-- 10. 种子数据
+-- =====================================================
+
+insert into public.markets (market_code, market_name, sort_order, is_active)
+values
+  ('stock', '股票', 1, true),
+  ('crypto', '加密货币', 2, true),
+  ('forex', '外汇', 3, true),
+  ('index', '指数', 4, true),
+  ('commodity', '大宗商品', 5, true)
+on conflict (market_code) do nothing;
+
+insert into public.system_configs (config_key, config_value, description)
+values
+  (
+    'site_disclaimer',
+    '{"text":"本平台内容仅供信息参考，不构成任何投资建议。市场有风险，决策需谨慎。"}'::jsonb,
+    '全站风险提示'
+  )
+on conflict (config_key) do nothing;
+
+-- =====================================================
+-- 11. 视图：前端常用
+-- =====================================================
+
+create or replace view public.v_asset_overview as
+select
+  a.id,
+  a.market_id,
+  m.market_code,
+  m.market_name,
+  a.asset_code,
+  a.asset_symbol,
+  a.asset_name,
+  a.asset_type,
+  a.exchange_name,
+  a.base_currency,
+  a.quote_currency,
+  a.sector_name,
+  a.industry_name,
+  a.logo_url,
+  a.status,
+  q.last_price,
+  q.prev_close_price,
+  q.open_price,
+  q.high_price,
+  q.low_price,
+  q.price_change,
+  q.price_change_pct,
+  q.volume,
+  q.turnover,
+  q.market_cap,
+  q.amplitude_pct,
+  q.heat_score,
+  q.sentiment_score,
+  q.ai_signal_label,
+  q.updated_at as quote_updated_at
+from public.assets a
+join public.markets m on m.id = a.market_id
+left join public.asset_quote_latest q on q.asset_id = a.id;
+
+create or replace view public.v_watchlist_items as
+select
+  wi.id as watchlist_item_id,
+  w.id as watchlist_id,
+  w.user_id,
+  w.watchlist_name,
+  w.is_default,
+  wi.sort_order,
+  wi.created_at as added_at,
+  a.id as asset_id,
+  a.asset_code,
+  a.asset_symbol,
+  a.asset_name,
+  a.asset_type,
+  q.last_price,
+  q.price_change,
+  q.price_change_pct,
+  q.heat_score,
+  q.ai_signal_label,
+  q.updated_at as quote_updated_at
+from public.user_watchlist_items wi
+join public.user_watchlists w on w.id = wi.watchlist_id
+join public.assets a on a.id = wi.asset_id
+left join public.asset_quote_latest q on q.asset_id = a.id;
+
+-- =====================================================
+-- 12. RLS 开启
+-- =====================================================
+
+alter table public.user_profiles enable row level security;
+alter table public.markets enable row level security;
+alter table public.assets enable row level security;
+alter table public.asset_quote_latest enable row level security;
+alter table public.asset_klines enable row level security;
+alter table public.news_sources enable row level security;
+alter table public.news_articles enable row level security;
+alter table public.news_article_assets enable row level security;
+alter table public.ai_insights enable row level security;
+alter table public.ai_conversations enable row level security;
+alter table public.ai_messages enable row level security;
+alter table public.user_watchlists enable row level security;
+alter table public.user_watchlist_items enable row level security;
+alter table public.user_alerts enable row level security;
+alter table public.signal_events enable row level security;
+alter table public.system_configs enable row level security;
+
+-- =====================================================
+-- 13. 公共数据只读策略
+-- =====================================================
+
+drop policy if exists "markets public read" on public.markets;
+create policy "markets public read"
+on public.markets
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "assets public read" on public.assets;
+create policy "assets public read"
+on public.assets
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "asset_quote_latest public read" on public.asset_quote_latest;
+create policy "asset_quote_latest public read"
+on public.asset_quote_latest
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "asset_klines public read" on public.asset_klines;
+create policy "asset_klines public read"
+on public.asset_klines
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "news_sources public read" on public.news_sources;
+create policy "news_sources public read"
+on public.news_sources
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "news_articles public read" on public.news_articles;
+create policy "news_articles public read"
+on public.news_articles
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "news_article_assets public read" on public.news_article_assets;
+create policy "news_article_assets public read"
+on public.news_article_assets
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "ai_insights public read" on public.ai_insights;
+create policy "ai_insights public read"
+on public.ai_insights
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "signal_events public read" on public.signal_events;
+create policy "signal_events public read"
+on public.signal_events
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "system_configs public read" on public.system_configs;
+create policy "system_configs public read"
+on public.system_configs
+for select
+to anon, authenticated
+using (true);
+
+-- =====================================================
+-- 14. 用户私有数据策略
+-- =====================================================
+
+drop policy if exists "user_profiles own read" on public.user_profiles;
+create policy "user_profiles own read"
+on public.user_profiles
+for select
+to authenticated
+using (auth.uid() = id);
+
+drop policy if exists "user_profiles own update" on public.user_profiles;
+create policy "user_profiles own update"
+on public.user_profiles
+for update
+to authenticated
+using (auth.uid() = id)
+with check (auth.uid() = id);
+
+drop policy if exists "user_watchlists own select" on public.user_watchlists;
+create policy "user_watchlists own select"
+on public.user_watchlists
+for select
+to authenticated
+using (auth.uid() = user_id);
+
+drop policy if exists "user_watchlists own insert" on public.user_watchlists;
+create policy "user_watchlists own insert"
+on public.user_watchlists
+for insert
+to authenticated
+with check (auth.uid() = user_id);
+
+drop policy if exists "user_watchlists own update" on public.user_watchlists;
+create policy "user_watchlists own update"
+on public.user_watchlists
+for update
+to authenticated
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+drop policy if exists "user_watchlists own delete" on public.user_watchlists;
+create policy "user_watchlists own delete"
+on public.user_watchlists
+for delete
+to authenticated
+using (auth.uid() = user_id);
+
+drop policy if exists "user_watchlist_items own select" on public.user_watchlist_items;
+create policy "user_watchlist_items own select"
+on public.user_watchlist_items
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.user_watchlists w
+    where w.id = user_watchlist_items.watchlist_id
+      and w.user_id = auth.uid()
+  )
+);
+
+drop policy if exists "user_watchlist_items own insert" on public.user_watchlist_items;
+create policy "user_watchlist_items own insert"
+on public.user_watchlist_items
+for insert
+to authenticated
+with check (
+  exists (
+    select 1
+    from public.user_watchlists w
+    where w.id = user_watchlist_items.watchlist_id
+      and w.user_id = auth.uid()
+  )
+);
+
+drop policy if exists "user_watchlist_items own update" on public.user_watchlist_items;
+create policy "user_watchlist_items own update"
+on public.user_watchlist_items
+for update
+to authenticated
+using (
+  exists (
+    select 1
+    from public.user_watchlists w
+    where w.id = user_watchlist_items.watchlist_id
+      and w.user_id = auth.uid()
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.user_watchlists w
+    where w.id = user_watchlist_items.watchlist_id
+      and w.user_id = auth.uid()
+  )
+);
+
+drop policy if exists "user_watchlist_items own delete" on public.user_watchlist_items;
+create policy "user_watchlist_items own delete"
+on public.user_watchlist_items
+for delete
+to authenticated
+using (
+  exists (
+    select 1
+    from public.user_watchlists w
+    where w.id = user_watchlist_items.watchlist_id
+      and w.user_id = auth.uid()
+  )
+);
+
+drop policy if exists "user_alerts own select" on public.user_alerts;
+create policy "user_alerts own select"
+on public.user_alerts
+for select
+to authenticated
+using (auth.uid() = user_id);
+
+drop policy if exists "user_alerts own insert" on public.user_alerts;
+create policy "user_alerts own insert"
+on public.user_alerts
+for insert
+to authenticated
+with check (auth.uid() = user_id);
+
+drop policy if exists "user_alerts own update" on public.user_alerts;
+create policy "user_alerts own update"
+on public.user_alerts
+for update
+to authenticated
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+drop policy if exists "user_alerts own delete" on public.user_alerts;
+create policy "user_alerts own delete"
+on public.user_alerts
+for delete
+to authenticated
+using (auth.uid() = user_id);
+
+drop policy if exists "ai_conversations own select" on public.ai_conversations;
+create policy "ai_conversations own select"
+on public.ai_conversations
+for select
+to authenticated
+using (auth.uid() = user_id);
+
+drop policy if exists "ai_conversations own insert" on public.ai_conversations;
+create policy "ai_conversations own insert"
+on public.ai_conversations
+for insert
+to authenticated
+with check (auth.uid() = user_id);
+
+drop policy if exists "ai_conversations own update" on public.ai_conversations;
+create policy "ai_conversations own update"
+on public.ai_conversations
+for update
+to authenticated
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+drop policy if exists "ai_conversations own delete" on public.ai_conversations;
+create policy "ai_conversations own delete"
+on public.ai_conversations
+for delete
+to authenticated
+using (auth.uid() = user_id);
+
+drop policy if exists "ai_messages own select" on public.ai_messages;
+create policy "ai_messages own select"
+on public.ai_messages
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.ai_conversations c
+    where c.id = ai_messages.conversation_id
+      and c.user_id = auth.uid()
+  )
+);
+
+drop policy if exists "ai_messages own insert" on public.ai_messages;
+create policy "ai_messages own insert"
+on public.ai_messages
+for insert
+to authenticated
+with check (
+  exists (
+    select 1
+    from public.ai_conversations c
+    where c.id = ai_messages.conversation_id
+      and c.user_id = auth.uid()
+  )
+);

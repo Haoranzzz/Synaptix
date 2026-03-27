@@ -818,3 +818,14 @@ with check (
       and c.user_id = auth.uid()
   )
 );
+
+
+-- 1. 为新闻源表 (news_sources) 开启匿名写入和读取权限
+ALTER TABLE news_sources ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "允许匿名插入新闻源" ON news_sources FOR INSERT WITH CHECK (true);
+CREATE POLICY "允许匿名查询新闻源" ON news_sources FOR SELECT USING (true);
+
+-- 2. 为新闻文章表 (news_articles) 开启匿名写入和读取权限
+ALTER TABLE news_articles ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "允许匿名插入新闻文章" ON news_articles FOR INSERT WITH CHECK (true);
+CREATE POLICY "允许匿名查询新闻文章" ON news_articles FOR SELECT USING (true);

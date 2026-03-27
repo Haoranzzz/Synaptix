@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/Card';
-import { BrainCircuit, Clock, ExternalLink, Bookmark, Share2, RefreshCcw } from 'lucide-react';
+import { BrainCircuit, Clock, ExternalLink, Bookmark, Share2, RefreshCcw, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import { formatDistanceToNow } from 'date-fns';
@@ -34,15 +34,17 @@ export function News() {
         .from('news_articles')
         .select(`
           id, title, summary, ai_summary, published_at, sentiment_label, heat_score, article_url,
-          news_sources (source_name),
+          news_sources!inner (source_name),
           news_article_assets (
             assets (asset_code)
           )
         `)
         .order('published_at', { ascending: false })
-        .limit(20);
+        .limit(30);
 
-      if (filter !== 'all') {
+      if (filter === 'trendradar') {
+        query = query.eq('news_sources.source_name', 'TrendRadar');
+      } else if (filter !== 'all') {
         query = query.eq('sentiment_label', filter);
       }
 
@@ -109,18 +111,19 @@ export function News() {
           </button>
         </div>
         <div className="flex gap-2 w-full sm:w-auto overflow-x-auto pb-2 sm:pb-0 no-scrollbar whitespace-nowrap">
-          {['all', 'positive', 'negative'].map(f => (
+          {['all', 'trendradar', 'positive', 'negative'].map(f => (
             <button
               key={f}
               onClick={() => setFilter(f)}
               className={cn(
-                "px-3 md:px-4 py-1.5 rounded-full text-xs md:text-sm font-medium transition-colors capitalize shrink-0",
+                "px-3 md:px-4 py-1.5 rounded-full text-xs md:text-sm font-medium transition-colors capitalize shrink-0 flex items-center gap-1.5",
                 filter === f 
                   ? "bg-primary text-white" 
                   : "bg-surface text-text-muted hover:text-text-main border border-border"
               )}
             >
-              {f === 'all' ? '全部' : f === 'positive' ? '利多' : '利空'}
+              {f === 'trendradar' && <Zap className={cn("w-3 h-3 md:w-3.5 md:h-3.5", filter === f ? "text-white" : "text-primary")} />}
+              {f === 'all' ? '全部' : f === 'trendradar' ? 'TrendRadar' : f === 'positive' ? '利多' : '利空'}
             </button>
           ))}
         </div>
@@ -144,7 +147,10 @@ export function News() {
                     {getRelativeTime(news.published_at)}
                   </span>
                   <span className="hidden xs:inline">•</span>
-                  <span className="truncate max-w-[100px] md:max-w-none">{news.news_sources?.source_name || '未知来源'}</span>
+                  <span className="truncate max-w-[100px] md:max-w-none flex items-center gap-1">
+                    {news.news_sources?.source_name === 'TrendRadar' && <Zap className="w-3 h-3 text-primary" />}
+                    {news.news_sources?.source_name || '未知来源'}
+                  </span>
                   {news.heat_score > 80 && (
                     <>
                       <span className="hidden xs:inline">•</span>

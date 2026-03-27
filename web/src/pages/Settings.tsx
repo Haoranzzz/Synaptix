@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { useAuthStore } from '@/store/auth';
-import { User, Settings as SettingsIcon, Bell, Shield, Palette, Globe, LogOut, CheckCircle2, Key, Info, Trash2, Zap, RefreshCcw } from 'lucide-react';
+import { User, Settings as SettingsIcon, Bell, Palette, Globe, LogOut, CheckCircle2, Info, Zap, RefreshCcw, Layout, Monitor } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 
-type TabType = 'profile' | 'preferences' | 'notifications' | 'security' | 'api' | 'about';
+type TabType = 'profile' | 'preferences' | 'notifications' | 'about';
 
 export function Settings() {
   const { user, signOut } = useAuthStore();
@@ -20,21 +20,15 @@ export function Settings() {
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
   const [refreshRate, setRefreshRate] = useState(localStorage.getItem('refresh_rate') || '30s');
   const [defaultPage, setDefaultPage] = useState(localStorage.getItem('default_page') || 'home');
-
-  // API State
-  const [openaiKey, setOpenaiKey] = useState(localStorage.getItem('custom_openai_key') || '');
-  const [showKey, setShowKey] = useState(false);
+  const [cardStyle, setCardStyle] = useState(localStorage.getItem('card_style') || 'glass');
+  const [density, setDensity] = useState(localStorage.getItem('interface_density') || 'comfortable');
 
   const handleSavePreferences = () => {
     localStorage.setItem('theme', theme);
     localStorage.setItem('refresh_rate', refreshRate);
     localStorage.setItem('default_page', defaultPage);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2000);
-  };
-
-  const handleSaveApiKey = () => {
-    localStorage.setItem('custom_openai_key', openaiKey);
+    localStorage.setItem('card_style', cardStyle);
+    localStorage.setItem('interface_density', density);
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 2000);
   };
@@ -77,8 +71,6 @@ export function Settings() {
     { id: 'profile', label: '个人信息', icon: User },
     { id: 'preferences', label: '偏好设置', icon: Palette },
     { id: 'notifications', label: '消息通知', icon: Bell },
-    { id: 'security', label: '账号安全', icon: Shield },
-    { id: 'api', label: 'API 设置', icon: Key },
     { id: 'about', label: '关于应用', icon: Info },
   ];
 
@@ -246,6 +238,66 @@ export function Settings() {
                   
                   <div className="flex items-center justify-between py-2 border-t border-border">
                     <div>
+                      <h4 className="font-medium text-text-main mb-1 flex items-center gap-2">
+                        <Layout className="w-4 h-4 text-primary" />
+                        卡片视觉风格
+                      </h4>
+                      <p className="text-sm text-text-muted">调整全站卡片的显示效果</p>
+                    </div>
+                    <div className="flex items-center gap-2 p-1 bg-background border border-border rounded-xl">
+                      <button 
+                        onClick={() => setCardStyle('glass')}
+                        className={cn(
+                          "px-4 py-1.5 rounded-lg text-sm font-medium transition-all",
+                          cardStyle === 'glass' ? "bg-surface-hover text-text-main shadow-sm" : "text-text-muted hover:text-text-main"
+                        )}
+                      >
+                        毛玻璃
+                      </button>
+                      <button 
+                        onClick={() => setCardStyle('solid')}
+                        className={cn(
+                          "px-4 py-1.5 rounded-lg text-sm font-medium transition-all",
+                          cardStyle === 'solid' ? "bg-surface-hover text-text-main shadow-sm" : "text-text-muted hover:text-text-main"
+                        )}
+                      >
+                        纯色
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between py-2 border-t border-border">
+                    <div>
+                      <h4 className="font-medium text-text-main mb-1 flex items-center gap-2">
+                        <Monitor className="w-4 h-4 text-primary" />
+                        界面显示密度
+                      </h4>
+                      <p className="text-sm text-text-muted">根据您的屏幕尺寸调整布局紧凑度</p>
+                    </div>
+                    <div className="flex items-center gap-2 p-1 bg-background border border-border rounded-xl">
+                      <button 
+                        onClick={() => setDensity('comfortable')}
+                        className={cn(
+                          "px-4 py-1.5 rounded-lg text-sm font-medium transition-all",
+                          density === 'comfortable' ? "bg-surface-hover text-text-main shadow-sm" : "text-text-muted hover:text-text-main"
+                        )}
+                      >
+                        舒适
+                      </button>
+                      <button 
+                        onClick={() => setDensity('compact')}
+                        className={cn(
+                          "px-4 py-1.5 rounded-lg text-sm font-medium transition-all",
+                          density === 'compact' ? "bg-surface-hover text-text-main shadow-sm" : "text-text-muted hover:text-text-main"
+                        )}
+                      >
+                        紧凑
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between py-2 border-t border-border">
+                    <div>
                       <h4 className="font-medium text-text-main mb-1">默认启动页</h4>
                       <p className="text-sm text-text-muted">设置登录后默认跳转的页面</p>
                     </div>
@@ -305,112 +357,6 @@ export function Settings() {
                         已应用
                       </span>
                     )}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          {activeTab === 'api' && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-              <Card className="bg-surface/50 backdrop-blur-sm border-border shadow-sm">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Key className="w-5 h-5 text-primary" />
-                    API 密钥管理
-                  </CardTitle>
-                  <CardDescription>配置您的自定义 AI 模型密钥（可选）</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="p-4 bg-primary/10 rounded-xl border border-primary/20 flex gap-3">
-                    <Zap className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-                    <p className="text-sm text-text-main leading-relaxed">
-                      默认情况下，我们使用系统集成的 OpenAI 接口。如果您希望使用自己的 API Key 以获得更高的配额或使用特定模型，可以在下方配置。
-                    </p>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="grid gap-2">
-                      <label className="text-sm font-medium text-text-main">OpenAI API Key</label>
-                      <div className="relative max-w-xl">
-                        <input 
-                          type={showKey ? "text" : "password"} 
-                          value={openaiKey}
-                          onChange={(e) => setOpenaiKey(e.target.value)}
-                          className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                          placeholder="sk-..."
-                        />
-                        <button 
-                          onClick={() => setShowKey(!showKey)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-main"
-                        >
-                          {showKey ? "隐藏" : "显示"}
-                        </button>
-                      </div>
-                      <p className="text-xs text-text-muted">密钥仅保存在您的浏览器本地，不会上传到服务器。</p>
-                    </div>
-
-                    <div className="pt-2">
-                      <button 
-                        onClick={handleSaveApiKey}
-                        className="bg-primary text-white px-6 py-2.5 rounded-xl font-medium hover:bg-primary-hover active:scale-95 transition-all"
-                      >
-                        保存密钥
-                      </button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          {activeTab === 'security' && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-              <Card className="bg-surface/50 backdrop-blur-sm border-border shadow-sm">
-                <CardHeader>
-                  <CardTitle>账号安全</CardTitle>
-                  <CardDescription>管理您的登录凭据和安全选项</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="flex items-center justify-between py-2">
-                    <div>
-                      <h4 className="font-medium text-text-main mb-1">修改密码</h4>
-                      <p className="text-sm text-text-muted">定期更换密码以保障账号安全</p>
-                    </div>
-                    <button className="px-4 py-2 bg-surface-hover border border-border rounded-xl text-sm font-medium hover:bg-border transition-all">
-                      立即修改
-                    </button>
-                  </div>
-
-                  <div className="flex items-center justify-between py-2 border-t border-border">
-                    <div>
-                      <h4 className="font-medium text-text-main mb-1">双重身份验证 (2FA)</h4>
-                      <p className="text-sm text-text-muted">为您的账号增加一层额外的保护</p>
-                    </div>
-                    <button className="px-4 py-2 bg-surface-hover border border-border rounded-xl text-sm font-medium hover:bg-border transition-all opacity-50">
-                      即将推出
-                    </button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border-down/20 bg-down/5">
-                <CardHeader>
-                  <CardTitle className="text-down flex items-center gap-2">
-                    <Trash2 className="w-5 h-5" />
-                    危险区域
-                  </CardTitle>
-                  <CardDescription>这些操作无法撤销，请谨慎操作</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium text-text-main mb-1">注销账号</h4>
-                      <p className="text-sm text-text-muted">永久删除您的账号及所有自选、对话数据</p>
-                    </div>
-                    <button className="px-4 py-2 bg-down text-white rounded-xl text-sm font-medium hover:bg-red-600 transition-all">
-                      注销账号
-                    </button>
                   </div>
                 </CardContent>
               </Card>
@@ -497,36 +443,6 @@ export function Settings() {
                       </label>
                     </div>
                   ))}
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          {activeTab === 'security' && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-              <Card className="bg-surface/50 backdrop-blur-sm border-border shadow-sm">
-                <CardHeader>
-                  <CardTitle>安全设置</CardTitle>
-                  <CardDescription>管理您的密码和账号安全</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="flex items-center justify-between py-2">
-                    <div>
-                      <h4 className="font-medium text-text-main mb-1">修改密码</h4>
-                      <p className="text-sm text-text-muted">我们建议您定期更新密码以保障账号安全</p>
-                    </div>
-                    <button className="px-4 py-2 border border-border rounded-xl text-sm font-medium hover:bg-surface-hover transition-colors">
-                      更新密码
-                    </button>
-                  </div>
-                  
-                  <div className="pt-4 border-t border-border">
-                    <h4 className="font-medium text-down mb-2">危险区域</h4>
-                    <p className="text-sm text-text-muted mb-4">注销账号将永久删除您的所有数据，此操作无法撤销。</p>
-                    <button className="px-4 py-2 border border-down/50 text-down rounded-xl text-sm font-medium hover:bg-down/10 transition-colors">
-                      注销账号
-                    </button>
-                  </div>
                 </CardContent>
               </Card>
             </div>

@@ -60,9 +60,9 @@ export function Watchlist() {
   const removeFromWatchlist = async (itemId: number) => {
     try {
       const { error } = await supabase
-        .from('v_watchlist_items')
+        .from('user_watchlist_items')
         .delete()
-        .eq('watchlist_item_id', itemId);
+        .eq('id', itemId);
 
       if (error) throw error;
       

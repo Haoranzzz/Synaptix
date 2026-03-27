@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { useAuthStore } from '@/store/auth';
-import { User, Settings as SettingsIcon, Bell, Palette, Globe, LogOut, CheckCircle2, Info, Zap, RefreshCcw, Layout, Monitor } from 'lucide-react';
+import { User, Settings as SettingsIcon, Bell, Palette, Globe, LogOut, CheckCircle2, Info, Zap, RefreshCcw, Layout, Monitor, BrainCircuit } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
+import { useTheme } from '@/hooks/useTheme';
 
 type TabType = 'profile' | 'preferences' | 'notifications' | 'about';
 
 export function Settings() {
   const { user, signOut } = useAuthStore();
+  const { theme, setTheme } = useTheme();
   const [activeTab, setActiveTab] = useState<TabType>('profile');
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -17,18 +19,32 @@ export function Settings() {
   const [displayName, setDisplayName] = useState(user?.user_metadata?.display_name || user?.email?.split('@')[0] || '');
 
   // Preferences State (using localStorage)
-  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
   const [refreshRate, setRefreshRate] = useState(localStorage.getItem('refresh_rate') || '30s');
   const [defaultPage, setDefaultPage] = useState(localStorage.getItem('default_page') || 'home');
   const [cardStyle, setCardStyle] = useState(localStorage.getItem('card_style') || 'glass');
   const [density, setDensity] = useState(localStorage.getItem('interface_density') || 'comfortable');
 
+  // AI Configuration State
+  const [aiApiKey, setAiApiKey] = useState(localStorage.getItem('ai_api_key') || '');
+  const [aiBaseUrl, setAiBaseUrl] = useState(localStorage.getItem('ai_base_url') || '');
+  const [aiModel, setAiModel] = useState(localStorage.getItem('ai_model') || '');
+
   const handleSavePreferences = () => {
-    localStorage.setItem('theme', theme);
     localStorage.setItem('refresh_rate', refreshRate);
     localStorage.setItem('default_page', defaultPage);
     localStorage.setItem('card_style', cardStyle);
     localStorage.setItem('interface_density', density);
+    
+    // Save AI Config
+    if (aiApiKey) localStorage.setItem('ai_api_key', aiApiKey);
+    else localStorage.removeItem('ai_api_key');
+    
+    if (aiBaseUrl) localStorage.setItem('ai_base_url', aiBaseUrl);
+    else localStorage.removeItem('ai_base_url');
+    
+    if (aiModel) localStorage.setItem('ai_model', aiModel);
+    else localStorage.removeItem('ai_model');
+
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 2000);
   };
@@ -344,6 +360,51 @@ export function Settings() {
                     </div>
                   </div>
 
+                  <div className="py-4 border-t border-border space-y-4">
+                    <div>
+                      <h4 className="font-medium text-text-main mb-1 flex items-center gap-2">
+                        <BrainCircuit className="w-4 h-4 text-primary" />
+                        AI 模型配置
+                      </h4>
+                      <p className="text-sm text-text-muted">自定义 AI 接口，支持 OpenAI 兼容格式 (留空则使用默认配置)</p>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <div className="grid gap-1.5">
+                        <label className="text-xs font-medium text-text-muted">API Key</label>
+                        <input 
+                          type="password" 
+                          value={aiApiKey}
+                          onChange={(e) => setAiApiKey(e.target.value)}
+                          placeholder="sk-..."
+                          className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+                      
+                      <div className="grid gap-1.5">
+                        <label className="text-xs font-medium text-text-muted">Base URL</label>
+                        <input 
+                          type="text" 
+                          value={aiBaseUrl}
+                          onChange={(e) => setAiBaseUrl(e.target.value)}
+                          placeholder="https://api.openai.com/v1"
+                          className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+                      
+                      <div className="grid gap-1.5">
+                        <label className="text-xs font-medium text-text-muted">模型名称</label>
+                        <input 
+                          type="text" 
+                          value={aiModel}
+                          onChange={(e) => setAiModel(e.target.value)}
+                          placeholder="gpt-3.5-turbo"
+                          className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="pt-4 flex items-center gap-4">
                     <button 
                       onClick={handleSavePreferences}
@@ -391,8 +452,8 @@ export function Settings() {
                       <p className="text-sm font-medium text-text-main">Synaptix Labs</p>
                     </div>
                     <div className="space-y-1">
-                      <p className="text-xs text-text-muted uppercase tracking-wider">最后更新</p>
-                      <p className="text-sm font-medium text-text-main">2026年3月27日</p>
+                      <p className="text-xs text-text-muted uppercase tracking-wider">当前版本</p>
+                      <p className="text-sm font-medium text-text-main font-mono text-primary">v1.0.5</p>
                     </div>
                     <div className="space-y-1">
                       <p className="text-xs text-text-muted uppercase tracking-wider">运行环境</p>
@@ -404,6 +465,37 @@ export function Settings() {
                     <div className="space-y-1">
                       <p className="text-xs text-text-muted uppercase tracking-wider">许可证</p>
                       <p className="text-sm font-medium text-text-main">Enterprise Edition</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 pt-6 border-t border-border">
+                    <h3 className="font-semibold text-text-main">更新日志 (Release Notes)</h3>
+                    
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold text-primary font-mono">v1.0.5</span>
+                          <span className="text-xs text-text-muted">2026-03-27</span>
+                        </div>
+                        <ul className="text-sm text-text-muted space-y-1 list-disc list-inside pl-4">
+                          <li>新增 AI 模型自定义配置，支持用户填入专属 API Key。</li>
+                          <li>修复 DashScope 接口在特定情况下的 400 错误。</li>
+                          <li>重构浅色模式逻辑，确保全站主题秒级平滑切换。</li>
+                          <li>在设置页新增版本号与 Release 更新日志。</li>
+                        </ul>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold text-text-main font-mono">v1.0.4</span>
+                          <span className="text-xs text-text-muted">2026-03-26</span>
+                        </div>
+                        <ul className="text-sm text-text-muted space-y-1 list-disc list-inside pl-4">
+                          <li>修复了 Watchlist 自选列表的数据读取与删除 Bug。</li>
+                          <li>优化侧边栏 UI，移动端登录操作不再遮挡。</li>
+                          <li>增加自动为新用户创建默认自选列表的逻辑。</li>
+                        </ul>
+                      </div>
                     </div>
                   </div>
 

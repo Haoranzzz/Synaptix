@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { BrainCircuit, Send, AlertTriangle, TrendingUp, History, Plus, X, User as UserIcon } from 'lucide-react';
-import { openai, AI_MODEL } from '@/lib/openai';
+import { getOpenAIClient, getAIConfig } from '@/lib/openai';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth';
 import { supabase } from '@/lib/supabase';
@@ -89,6 +89,7 @@ export function AIInsights() {
     setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
     setIsLoading(true);
 
+    const { model } = getAIConfig();
     try {
       let conversationId = currentConversationId;
 
@@ -118,8 +119,9 @@ export function AIInsights() {
         });
       }
 
-      const response = await openai.chat.completions.create({
-        model: AI_MODEL || 'gpt-3.5-turbo',
+      const openaiClient = getOpenAIClient();
+      const response = await openaiClient.chat.completions.create({
+        model: model,
         messages: [
           { role: 'system', content: '你是Synaptix的金融AI助手，专业、冷静、客观。你的回答需要基于数据和逻辑，并明确指出可能的风险。如果被问及投资建议，请务必说明这仅供参考，不构成投资建议。' },
           ...messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
@@ -144,9 +146,16 @@ export function AIInsights() {
           .update({ updated_at: new Date().toISOString() })
           .eq('id', conversationId);
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error fetching AI response:', error);
-      setMessages(prev => [...prev, { role: 'assistant', content: '系统出现错误，请稍后再试。' }]);
+      let errorMessage = '系统出现错误，请稍后再试。';
+      
+      const errMsg = error instanceof Error ? error.message : String(error);
+      if (errMsg.includes('current user api does not support http call')) {
+        errorMessage = `错误：当前配置的模型 (${model}) 在阿里云 DashScope 接口下不支持 HTTP 方式调用（例如 qvq-max 等视觉模型）。请在设置页中切换为 qwen-plus 或 qwen-max 等标准模型。`;
+      }
+      
+      setMessages(prev => [...prev, { role: 'assistant', content: errorMessage }]);
     } finally {
       setIsLoading(false);
     }
@@ -266,7 +275,7 @@ export function AIInsights() {
                 <CardTitle className="text-base md:text-lg truncate">Synaptix AI 助手</CardTitle>
                 <div className="flex items-center gap-2 text-[10px] md:text-xs text-text-muted">
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
-                  <span>在线 • 基于 {AI_MODEL}</span>
+                  <span>在线 • 基于 {getAIConfig().model}</span>
                 </div>
               </div>
             </div>

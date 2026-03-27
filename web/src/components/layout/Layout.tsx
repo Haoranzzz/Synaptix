@@ -5,9 +5,11 @@ import { Search, Bell, User as UserIcon, Info, ExternalLink, X } from 'lucide-re
 import { useAuthStore } from '@/store/auth';
 import { AuthModal } from '../auth/AuthModal';
 import { cn } from '@/lib/utils';
+import { useTheme } from '@/hooks/useTheme';
 
 export function Layout() {
   const { user, initialize, signOut } = useAuthStore();
+  useTheme();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [showDevTips, setShowDevTips] = useState(false);
 

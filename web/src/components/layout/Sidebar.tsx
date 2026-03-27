@@ -171,11 +171,6 @@ export function Sidebar() {
           </div>
         )}
       </div>
-
-      <AuthModal 
-        isOpen={isAuthModalOpen} 
-        onClose={() => setIsAuthModalOpen(false)} 
-      />
     </>
   );
 
@@ -227,6 +222,11 @@ export function Sidebar() {
       >
         {renderContent(mobileMenuOpen)}
       </aside>
+
+      <AuthModal 
+        isOpen={isAuthModalOpen} 
+        onClose={() => setIsAuthModalOpen(false)} 
+      />
     </>
   );
 }

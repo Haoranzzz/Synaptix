@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/Card';
-import { BrainCircuit, Clock, ExternalLink, Bookmark, Share2 } from 'lucide-react';
+import { BrainCircuit, Clock, ExternalLink, Bookmark, Share2, RefreshCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { mockNews } from '@/lib/mockData';
+import { zhituApi } from '@/lib/zhitu';
+import type { ZhituNews } from '@/lib/zhitu';
 
 interface NewsArticle {
-  id: number;
+  id: string | number;
   title: string;
   summary: string;
   ai_summary: string;
@@ -24,55 +26,90 @@ export function News() {
   const [filter, setFilter] = useState('all');
   const [newsList, setNewsList] = useState<NewsArticle[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  useEffect(() => {
-    const fetchNews = async () => {
-      setLoading(true);
-      try {
-        let query = supabase
-          .from('news_articles')
-          .select(`
-            id, title, summary, ai_summary, published_at, sentiment_label, heat_score, article_url,
-            news_sources (source_name),
-            news_article_assets (
-              assets (asset_code)
-            )
-          `)
-          .order('published_at', { ascending: false })
-          .limit(20);
+  const fetchNews = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    try {
+      // 1. Try fetching from Zhitu API first
+      const zhituNews = await zhituApi.getNews(20);
+      
+      if (zhituNews && zhituNews.length > 0) {
+        const mappedNews: NewsArticle[] = zhituNews.map((n: ZhituNews) => ({
+          id: n.id || Math.random(),
+          title: n.title,
+          summary: n.content || n.digest || '',
+          ai_summary: '',
+          published_at: n.time || new Date().toISOString(),
+          sentiment_label: n.sentiment || 'neutral',
+          heat_score: n.heat || 50,
+          article_url: n.url || '',
+          news_sources: { source_name: n.source || '智兔财经' },
+          news_article_assets: (n.stocks || []).map((s: string) => ({
+            assets: { asset_code: s }
+          }))
+        }));
 
+        let filtered = mappedNews;
         if (filter !== 'all') {
-          query = query.eq('sentiment_label', filter);
+          filtered = mappedNews.filter(n => n.sentiment_label === filter);
         }
+        setNewsList(filtered);
+        return;
+      }
 
-        const { data, error } = await query;
-        
-        if (error) throw error;
-        
-        if (data && data.length > 0) {
-          setNewsList(data as unknown as NewsArticle[]);
-        } else {
-          // Use mock data if database is empty
-          let filteredMock = mockNews;
-          if (filter !== 'all') {
-            filteredMock = mockNews.filter((n) => n.sentiment_label === filter);
-          }
-          setNewsList(filteredMock as unknown as NewsArticle[]);
-        }
-      } catch (error) {
-        console.error('Error fetching news:', error);
+      // 2. Fallback to Supabase
+      let query = supabase
+        .from('news_articles')
+        .select(`
+          id, title, summary, ai_summary, published_at, sentiment_label, heat_score, article_url,
+          news_sources (source_name),
+          news_article_assets (
+            assets (asset_code)
+          )
+        `)
+        .order('published_at', { ascending: false })
+        .limit(20);
+
+      if (filter !== 'all') {
+        query = query.eq('sentiment_label', filter);
+      }
+
+      const { data, error } = await query;
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        setNewsList(data as unknown as NewsArticle[]);
+      } else {
+        // 3. Fallback to mock data
         let filteredMock = mockNews;
         if (filter !== 'all') {
           filteredMock = mockNews.filter((n) => n.sentiment_label === filter);
         }
         setNewsList(filteredMock as unknown as NewsArticle[]);
-      } finally {
-        setLoading(false);
       }
-    };
+    } catch (error) {
+      console.error('Error fetching news:', error);
+      let filteredMock = mockNews;
+      if (filter !== 'all') {
+        filteredMock = mockNews.filter((n) => n.sentiment_label === filter);
+      }
+      setNewsList(filteredMock as unknown as NewsArticle[]);
+    } finally {
+      if (showLoading) setLoading(false);
+      setIsRefreshing(false);
+    }
+  };
 
+  useEffect(() => {
     fetchNews();
   }, [filter]);
+
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    fetchNews(false);
+  };
 
   const getRelativeTime = (dateString: string) => {
     if (!dateString) return '';
@@ -86,7 +123,20 @@ export function News() {
   return (
     <div className="max-w-4xl mx-auto space-y-4 md:space-y-6 px-0 md:px-4">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center sticky top-16 bg-background/80 backdrop-blur-md py-4 z-10 gap-4">
-        <h1 className="text-xl md:text-2xl font-bold">情报中心</h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-xl md:text-2xl font-bold">情报中心</h1>
+          <button 
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className={cn(
+              "p-1.5 text-text-muted hover:text-primary transition-all active:scale-95",
+              isRefreshing && "animate-spin text-primary"
+            )}
+            title="刷新资讯"
+          >
+            <RefreshCcw className="w-4 h-4" />
+          </button>
+        </div>
         <div className="flex gap-2 w-full sm:w-auto overflow-x-auto pb-2 sm:pb-0 no-scrollbar whitespace-nowrap">
           {['all', 'positive', 'negative'].map(f => (
             <button

@@ -6,8 +6,6 @@ import { supabase } from '@/lib/supabase';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { mockNews } from '@/lib/mockData';
-import { zhituApi } from '@/lib/zhitu';
-import type { ZhituNews } from '@/lib/zhitu';
 
 interface NewsArticle {
   id: string | number;
@@ -31,34 +29,7 @@ export function News() {
   const fetchNews = async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
-      // 1. Try fetching from Zhitu API first
-      const zhituNews = await zhituApi.getNews(20);
-      
-      if (zhituNews && zhituNews.length > 0) {
-        const mappedNews: NewsArticle[] = zhituNews.map((n: ZhituNews) => ({
-          id: n.id || Math.random(),
-          title: n.title,
-          summary: n.content || n.digest || '',
-          ai_summary: '',
-          published_at: n.time || new Date().toISOString(),
-          sentiment_label: n.sentiment || 'neutral',
-          heat_score: n.heat || 50,
-          article_url: n.url || '',
-          news_sources: { source_name: n.source || '智兔财经' },
-          news_article_assets: (n.stocks || []).map((s: string) => ({
-            assets: { asset_code: s }
-          }))
-        }));
-
-        let filtered = mappedNews;
-        if (filter !== 'all') {
-          filtered = mappedNews.filter(n => n.sentiment_label === filter);
-        }
-        setNewsList(filtered);
-        return;
-      }
-
-      // 2. Fallback to Supabase
+      // 1. Fetch from Supabase
       let query = supabase
         .from('news_articles')
         .select(`
@@ -82,7 +53,7 @@ export function News() {
       if (data && data.length > 0) {
         setNewsList(data as unknown as NewsArticle[]);
       } else {
-        // 3. Fallback to mock data
+        // 2. Fallback to mock data
         let filteredMock = mockNews;
         if (filter !== 'all') {
           filteredMock = mockNews.filter((n) => n.sentiment_label === filter);

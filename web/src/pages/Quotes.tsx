@@ -6,7 +6,6 @@ import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth';
 import { mockQuotes } from '@/lib/mockData';
 import { motion } from 'framer-motion';
-import { zhituApi } from '@/lib/zhitu';
 
 interface AssetOverview {
   id: string | number;
@@ -33,40 +32,17 @@ export function Quotes() {
   const fetchAssets = async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
-      if (activeTab === 'A股') {
-        // Fetch real data from Zhitu API for A-shares
-        const stocks = await zhituApi.getStockList();
-        // Zhitu API /hs/list/all returns basic list, we need market data
-        // For demonstration, we'll take first 20 and get their realtime quotes
-        const topStocks = stocks.slice(0, 20);
-        const quotes = await zhituApi.getRealtimeQuotes(topStocks.map(s => s.dm));
-        
-        const mappedAssets: AssetOverview[] = quotes.map(q => ({
-          id: q.dm,
-          market_name: 'A股',
-          asset_code: q.dm,
-          asset_name: q.mc,
-          last_price: q.p,
-          price_change: q.zde,
-          price_change_pct: q.zdf,
-          volume: q.ze, // 成交额
-          heat_score: Math.floor(Math.random() * 30) + 70, // 智兔接口若无热度，暂用随机数模拟高热度
-          ai_signal_label: q.zdf > 2 ? 'bullish' : q.zdf < -2 ? 'bearish' : 'neutral'
-        }));
-        setAssets(mappedAssets);
-        return;
-      }
-
-      // Default Supabase query for other tabs
+      // Default Supabase query
       let query = supabase.from('v_asset_overview').select('*');
       
       if (activeTab !== '全部') {
         const marketMap: Record<string, string> = {
+          'A股': 'cn_stock',
           '美股': 'stock',
           '加密货币': 'crypto',
           '外汇': 'forex'
         };
-        query = query.eq('market_code', marketMap[activeTab]);
+        query = query.eq('market_code', marketMap[activeTab] || activeTab);
       }
 
       const { data, error } = await query;

@@ -35,6 +35,15 @@ export const mockWatchlist = [
   { watchlist_item_id: 2, asset_id: 2, asset_code: 'MSFT', asset_name: '微软', last_price: 420.55, price_change: 3.3, price_change_pct: 0.8, heat_score: 78, ai_signal_label: 'hold' },
   { watchlist_item_id: 3, asset_id: 3, asset_code: 'BTCUSDT', asset_name: '比特币', last_price: 65000.00, price_change: -1500, price_change_pct: -2.5, heat_score: 92, ai_signal_label: 'sell' },
 ];
+export const mockChartData = Array.from({ length: 100 }, (_, i) => {
+  const date = new Date();
+  date.setDate(date.getDate() - (100 - i));
+  return {
+    time: date.toISOString().split('T')[0],
+    value: 3000 + Math.sin(i * 0.1) * 200 + i * 5 + Math.random() * 50,
+  };
+});
+
 export const mockUserProfile = {
   display_name: '测试用户',
   email: 'test@example.com',

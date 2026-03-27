@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { createChart, ColorType } from 'lightweight-charts';
+import { createChart, ColorType, AreaSeries } from 'lightweight-charts';
 import type { IChartApi } from 'lightweight-charts';
 
 interface ChartWidgetProps {
@@ -58,7 +58,7 @@ export function ChartWidget({
 
     chartRef.current = chart;
 
-    const areaSeries = (chart as any).addAreaSeries({
+    const areaSeries = chart.addSeries(AreaSeries, {
       lineColor,
       topColor: areaTopColor,
       bottomColor: areaBottomColor,

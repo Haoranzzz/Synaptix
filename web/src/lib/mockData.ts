@@ -31,9 +31,9 @@ export const mockSignals = [
 ];
 
 export const mockWatchlist = [
-  { id: 1, asset_code: 'AAPL', asset_name: '苹果', last_price: 185.92, price_change_pct: 1.2, ai_signal_label: 'buy' },
-  { id: 2, asset_code: 'MSFT', asset_name: '微软', last_price: 420.55, price_change_pct: 0.8, ai_signal_label: 'hold' },
-  { id: 3, asset_code: 'BTCUSDT', asset_name: '比特币', last_price: 65000.00, price_change_pct: -2.5, ai_signal_label: 'sell' },
+  { watchlist_item_id: 1, asset_id: 1, asset_code: 'AAPL', asset_name: '苹果', last_price: 185.92, price_change: 2.2, price_change_pct: 1.2, heat_score: 85, ai_signal_label: 'buy' },
+  { watchlist_item_id: 2, asset_id: 2, asset_code: 'MSFT', asset_name: '微软', last_price: 420.55, price_change: 3.3, price_change_pct: 0.8, heat_score: 78, ai_signal_label: 'hold' },
+  { watchlist_item_id: 3, asset_id: 3, asset_code: 'BTCUSDT', asset_name: '比特币', last_price: 65000.00, price_change: -1500, price_change_pct: -2.5, heat_score: 92, ai_signal_label: 'sell' },
 ];
 export const mockUserProfile = {
   display_name: '测试用户',

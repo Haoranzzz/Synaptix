@@ -38,7 +38,21 @@ export default async function handler(req: Request) {
     
     // 1. 尝试获取内容
     const title = payload.title || 'TrendRadar 推送';
-    const content = payload.content || payload.text || payload.markdown || JSON.stringify(payload);
+    let content = payload.content || payload.text || payload.markdown || JSON.stringify(payload);
+    
+    // 清洗 TrendRadar 推送中的冗余标记
+    if (typeof content === 'string') {
+      content = content
+        .replace(/\*\*\[第 \d+\/\d+ 批次\]\*\*/g, '')
+        .replace(/📊 \*\*热点词汇统计\*\*.*?\n/g, '')
+        .replace(/📰 \*\*RSS 订阅统计\*\*.*?\n/g, '')
+        .replace(/📈 \[\d+\/\d+\] \*\*.*?\*\* : \*\*\d+\*\* 条/g, '')
+        .replace(/📌 \[\d+\/\d+\] \*\*.*?\*\* : \d+ 条/g, '')
+        .replace(/⚠️ AI 分析失败:.*?\n/g, '')
+        .replace(/> 更新时间：.*?\n/g, '')
+        .trim();
+    }
+
     const sourceName = payload.platform || 'TrendRadar';
     const link = payload.link || '';
     const time = payload.time || new Date().toISOString();

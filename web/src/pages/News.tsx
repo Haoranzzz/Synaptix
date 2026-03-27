@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/Card';
-import { BrainCircuit, Clock, ExternalLink, Bookmark, Share2, RefreshCcw, Zap } from 'lucide-react';
+import { BrainCircuit, Clock, ExternalLink, Bookmark, Share2, RefreshCcw, Zap, ChevronDown, ChevronUp, Sparkles, Filter } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import { formatDistanceToNow } from 'date-fns';
@@ -25,11 +25,35 @@ export function News() {
   const [newsList, setNewsList] = useState<NewsArticle[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [expandedItems, setExpandedItems] = useState<Set<string | number>>(new Set());
 
-  const fetchNews = async (showLoading = true) => {
+  const toggleExpand = useCallback((id: string | number) => {
+    setExpandedItems(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const cleanContent = (content: string) => {
+    if (!content) return '';
+    return content
+      .replace(/\*\*\[第 \d+\/\d+ 批次\]\*\*/g, '')
+      .replace(/📊 \*\*热点词汇统计\*\*.*?\n/g, '')
+      .replace(/📰 \*\*RSS 订阅统计\*\*.*?\n/g, '')
+      .replace(/📈 \[\d+\/\d+\] \*\*.*?\*\* : \*\*\d+\*\* 条/g, '')
+      .replace(/📌 \[\d+\/\d+\] \*\*.*?\*\* : \d+ 条/g, '')
+      .replace(/⚠️ AI 分析失败:.*?\n/g, '')
+      .replace(/> 更新时间：.*?\n/g, '')
+      .replace(/【\d+】/g, '') // 移除可能的引索
+      .replace(/原文链接：.*?\n/g, '') // 移除原文链接行（已有按钮）
+      .trim();
+  };
+
+  const fetchNews = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
-      // 1. Fetch from Supabase
       let query = supabase
         .from('news_articles')
         .select(`
@@ -55,7 +79,6 @@ export function News() {
       if (data && data.length > 0) {
         setNewsList(data as unknown as NewsArticle[]);
       } else {
-        // 2. Fallback to mock data
         let filteredMock = mockNews;
         if (filter !== 'all') {
           filteredMock = mockNews.filter((n) => n.sentiment_label === filter);
@@ -73,11 +96,11 @@ export function News() {
       if (showLoading) setLoading(false);
       setIsRefreshing(false);
     }
-  };
+  }, [filter]);
 
   useEffect(() => {
     fetchNews();
-  }, [filter]);
+  }, [fetchNews]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -94,124 +117,200 @@ export function News() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-4 md:space-y-6 px-0 md:px-4">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center sticky top-16 bg-background/80 backdrop-blur-md py-4 z-10 gap-4">
-        <div className="flex items-center gap-4">
-          <h1 className="text-xl md:text-2xl font-bold">情报中心</h1>
-          <button 
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            className={cn(
-              "p-1.5 text-text-muted hover:text-primary transition-all active:scale-95",
-              isRefreshing && "animate-spin text-primary"
-            )}
-            title="刷新资讯"
-          >
-            <RefreshCcw className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="flex gap-2 w-full sm:w-auto overflow-x-auto pb-2 sm:pb-0 no-scrollbar whitespace-nowrap">
-          {['all', 'trendradar', 'positive', 'negative'].map(f => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
+    <div className="max-w-4xl mx-auto space-y-6 px-4 py-4 md:py-8">
+      {/* Header & Filter Bar */}
+      <div className="sticky top-0 z-30 bg-background/80 backdrop-blur-xl -mx-4 px-4 pb-4 pt-2 border-b border-border/40">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl md:text-2xl font-black tracking-tight text-text-main">情报中心</h1>
+            <div className="flex items-center gap-1.5 px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-black rounded uppercase tracking-widest border border-primary/20">
+              <span className="w-1 h-1 bg-primary rounded-full animate-pulse" />
+              Live
+            </div>
+            <button 
+              onClick={handleRefresh}
+              disabled={isRefreshing}
               className={cn(
-                "px-3 md:px-4 py-1.5 rounded-full text-xs md:text-sm font-medium transition-colors capitalize shrink-0 flex items-center gap-1.5",
-                filter === f 
-                  ? "bg-primary text-white" 
-                  : "bg-surface text-text-muted hover:text-text-main border border-border"
+                "p-1.5 text-text-muted hover:text-primary transition-all active:scale-90 rounded-lg hover:bg-primary/5",
+                isRefreshing && "animate-spin text-primary"
               )}
             >
-              {f === 'trendradar' && <Zap className={cn("w-3 h-3 md:w-3.5 md:h-3.5", filter === f ? "text-white" : "text-primary")} />}
-              {f === 'all' ? '全部' : f === 'trendradar' ? 'TrendRadar' : f === 'positive' ? '利多' : '利空'}
+              <RefreshCcw className="w-4 h-4" />
             </button>
-          ))}
+          </div>
+          
+          <div className="flex items-center gap-2 p-1 bg-surface/80 border border-border/40 rounded-xl overflow-x-auto no-scrollbar max-w-full">
+            {[
+              { id: 'all', label: '全部', icon: Filter },
+              { id: 'trendradar', label: 'TrendRadar', icon: Zap },
+              { id: 'positive', label: '利多', color: 'text-up' },
+              { id: 'negative', label: '利空', color: 'text-down' }
+            ].map(f => (
+              <button
+                key={f.id}
+                onClick={() => setFilter(f.id)}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-[12px] font-bold transition-all shrink-0 flex items-center gap-1.5",
+                  filter === f.id 
+                    ? "bg-primary text-white shadow-md shadow-primary/20" 
+                    : "text-text-muted hover:text-text-main hover:bg-white/5"
+                )}
+              >
+                {f.icon && <f.icon className={cn("w-3.5 h-3.5", filter === f.id ? "text-white" : "text-primary")} />}
+                {f.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      <div className="space-y-3 md:space-y-4">
+      {/* News List */}
+      <div className="space-y-4">
         {loading ? (
-          <div className="text-center py-12 text-text-muted">
-            <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-            <span className="text-sm">加载中...</span>
+          <div className="flex flex-col items-center justify-center py-32 text-text-muted bg-surface/20 rounded-3xl border border-dashed border-border/40">
+            <div className="w-12 h-12 border-2 border-primary/20 border-t-primary rounded-full animate-spin mb-4" />
+            <p className="text-sm font-bold tracking-widest uppercase opacity-60">正在同步全球情报...</p>
           </div>
         ) : newsList.length === 0 ? (
-          <div className="text-center py-12 text-text-muted text-sm italic">暂无资讯</div>
+          <div className="flex flex-col items-center justify-center py-32 text-text-muted bg-surface/20 rounded-3xl border border-dashed border-border/40">
+            <Zap className="w-12 h-12 mb-4 opacity-10" />
+            <p className="text-sm font-medium italic opacity-60">暂无相关情报，请尝试切换筛选条件</p>
+          </div>
         ) : newsList.map(news => (
-          <Card key={news.id} className="overflow-hidden hover:border-primary/50 transition-all group border-border/50 shadow-sm">
+          <Card 
+            key={news.id} 
+            className={cn(
+              "group overflow-hidden transition-all border-border/40 bg-surface/40 hover:bg-surface/60 hover:border-border/80 hover:shadow-xl hover:shadow-black/20",
+              news.sentiment_label === 'positive' ? "border-l-2 border-l-up/50" : 
+              news.sentiment_label === 'negative' ? "border-l-2 border-l-down/50" : 
+              "border-l-2 border-l-primary/20"
+            )}
+          >
             <CardContent className="p-4 md:p-6">
-              <div className="flex justify-between items-start mb-3 md:mb-4">
-                <div className="flex flex-wrap items-center gap-2 md:gap-3 text-[10px] md:text-xs text-text-muted">
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
+              {/* Card Header */}
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center gap-3 text-[11px] md:text-[12px] font-bold text-text-muted">
+                  <div className="flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 opacity-60" />
                     {getRelativeTime(news.published_at)}
-                  </span>
-                  <span className="hidden xs:inline">•</span>
-                  <span className="truncate max-w-[100px] md:max-w-none flex items-center gap-1">
-                    {news.news_sources?.source_name === 'TrendRadar' && <Zap className="w-3 h-3 text-primary" />}
-                    {news.news_sources?.source_name || '未知来源'}
-                  </span>
-                  {news.heat_score > 80 && (
-                    <>
-                      <span className="hidden xs:inline">•</span>
-                      <span className="text-red-400 flex items-center gap-1 font-medium">
-                        🔥 热度爆发
-                      </span>
-                    </>
-                  )}
+                  </div>
+                  <div className="w-1 h-1 bg-border rounded-full" />
+                  <div className="flex items-center gap-2">
+                    <div className={cn(
+                      "w-1.5 h-1.5 rounded-full",
+                      news.news_sources?.source_name === 'TrendRadar' ? "bg-primary animate-pulse" : "bg-text-muted/30"
+                    )} />
+                    <span className={cn(
+                      "tracking-wide uppercase",
+                      news.news_sources?.source_name === 'TrendRadar' ? "text-primary" : "text-text-muted"
+                    )}>
+                      {news.news_sources?.source_name || '未知来源'}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex gap-1 md:gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                  <button className="p-1.5 hover:bg-surface-hover rounded-full text-text-muted hover:text-text-main transition-colors">
-                    <Bookmark className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                
+                <div className="flex gap-1">
+                  <button className="p-1.5 text-text-muted hover:text-primary hover:bg-primary/5 rounded-lg transition-all">
+                    <Bookmark className="w-4 h-4" />
                   </button>
-                  <button className="p-1.5 hover:bg-surface-hover rounded-full text-text-muted hover:text-text-main transition-colors">
-                    <Share2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                  <button className="p-1.5 text-text-muted hover:text-primary hover:bg-primary/5 rounded-lg transition-all">
+                    <Share2 className="w-4 h-4" />
                   </button>
                 </div>
               </div>
 
-              <h2 className="text-lg md:text-xl font-bold mb-2 md:mb-3 group-hover:text-primary transition-colors cursor-pointer leading-snug">
+              {/* Title */}
+              <h2 className="text-lg md:text-xl font-bold mb-3 text-text-main group-hover:text-primary transition-colors leading-snug tracking-tight">
                 {news.title}
               </h2>
               
-              <p className="text-sm md:text-base text-text-muted mb-4 leading-relaxed line-clamp-3 md:line-clamp-none">
-                {news.summary}
-              </p>
+              {/* Summary */}
+              <div className="relative mb-5">
+                <p className={cn(
+                  "text-[14px] md:text-[15px] text-text-muted leading-relaxed whitespace-pre-wrap",
+                  !expandedItems.has(news.id) && "line-clamp-3 overflow-hidden"
+                )}>
+                  {cleanContent(news.summary)}
+                </p>
+                
+                {news.summary && news.summary.length > 150 && (
+                  <button 
+                    onClick={() => toggleExpand(news.id)}
+                    className="mt-2 flex items-center gap-1 text-[12px] text-primary font-bold hover:underline transition-all"
+                  >
+                    {expandedItems.has(news.id) ? (
+                      <>收起内容 <ChevronUp className="w-3.5 h-3.5" /></>
+                    ) : (
+                      <>阅读全文 <ChevronDown className="w-3.5 h-3.5" /></>
+                    )}
+                  </button>
+                )}
+              </div>
 
+              {/* AI Insight Section */}
               {news.ai_summary && (
-                <div className="bg-primary/5 border border-primary/10 rounded-xl p-3 md:p-4 mb-4">
-                  <div className="flex items-start gap-2 md:gap-3">
-                    <BrainCircuit className="w-4 h-4 md:w-5 md:h-5 text-primary shrink-0 mt-0.5" />
-                    <div>
-                      <div className="text-xs md:text-sm font-bold mb-1 text-primary">AI 深度洞察</div>
-                      <div className="text-xs md:text-sm text-text-main/90 leading-relaxed">
-                        {news.ai_summary}
+                <div className="mb-6 p-4 rounded-xl bg-primary/5 border border-primary/10 relative overflow-hidden group/ai">
+                  <div className="absolute top-0 right-0 p-2 opacity-10 group-hover/ai:opacity-20 transition-opacity">
+                    <Sparkles className="w-12 h-12 text-primary" />
+                  </div>
+                  <div className="flex gap-3">
+                    <div className="shrink-0 mt-0.5">
+                      <div className="p-1.5 bg-primary/10 rounded-lg">
+                        <BrainCircuit className="w-4 h-4 text-primary" />
                       </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-primary">AI 深度分析</span>
+                        <div className="h-px flex-1 bg-primary/10" />
+                      </div>
+                      <p className="text-[13px] md:text-[14px] text-text-main leading-relaxed font-medium">
+                        {news.ai_summary}
+                      </p>
                     </div>
                   </div>
                 </div>
               )}
 
-              <div className="flex flex-col xs:flex-row items-start xs:items-center justify-between gap-3 md:gap-4 mt-2">
+              {/* Card Footer */}
+              <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-border/20">
                 <div className="flex flex-wrap gap-2">
                   {news.news_article_assets?.map((item, idx) => (
-                    <span key={idx} className="px-2 py-0.5 rounded bg-surface-hover text-[10px] md:text-xs font-mono border border-border cursor-pointer hover:border-primary/50 transition-colors">
+                    <span key={idx} className="px-2 py-0.5 rounded bg-surface-hover text-[10px] font-black font-mono text-text-muted border border-border/40 hover:border-primary/40 hover:text-primary transition-all cursor-pointer">
                       ${item.assets?.asset_code}
                     </span>
                   ))}
-                  <span className={cn(
-                    "px-2 py-0.5 rounded text-[10px] md:text-xs font-medium border",
+                  
+                  <div className={cn(
+                    "flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border shadow-sm",
                     news.sentiment_label === 'positive' ? "bg-up/10 text-up border-up/20" : 
                     news.sentiment_label === 'negative' ? "bg-down/10 text-down border-down/20" : 
                     "bg-surface-hover text-text-muted border-border"
                   )}>
+                    <span className={cn(
+                      "w-1 h-1 rounded-full",
+                      news.sentiment_label === 'positive' ? "bg-up" : 
+                      news.sentiment_label === 'negative' ? "bg-down" : "bg-text-muted"
+                    )} />
                     {news.sentiment_label === 'positive' ? '利多' : news.sentiment_label === 'negative' ? '利空' : '中性'}
-                  </span>
+                  </div>
+
+                  {news.heat_score > 80 && (
+                    <div className="flex items-center gap-1 px-2.5 py-0.5 rounded bg-red-500/10 text-red-500 text-[10px] font-black uppercase tracking-wider border border-red-500/20">
+                      <Zap className="w-3 h-3 fill-current" /> 热度
+                    </div>
+                  )}
                 </div>
                 
                 {news.article_url && (
-                  <a href={news.article_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[10px] md:text-xs text-text-muted hover:text-primary transition-colors font-medium">
-                    查看原文 <ExternalLink className="w-3 h-3" />
+                  <a 
+                    href={news.article_url} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-[12px] text-primary hover:bg-primary hover:text-white transition-all font-bold group/link"
+                  >
+                    原文
+                    <ExternalLink className="w-3.5 h-3.5 transition-transform group-hover/link:translate-x-0.5 group-hover/link:-translate-y-0.5" />
                   </a>
                 )}
               </div>

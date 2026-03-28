@@ -57,13 +57,14 @@ export function News() {
       let query = supabase
         .from('news_articles')
         .select(`
-          id, title, summary, ai_summary, published_at, sentiment_label, heat_score, article_url,
+          id, title, summary, ai_summary, published_at, crawled_at, sentiment_label, heat_score, article_url,
           news_sources!inner (source_name),
           news_article_assets (
             assets (asset_code)
           )
         `)
         .order('published_at', { ascending: false })
+        .order('crawled_at', { ascending: false })
         .limit(30);
 
       if (filter === 'trendradar') {
